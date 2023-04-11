@@ -20,11 +20,49 @@ int DataSecCnt = 0; // the count of sectors in the data region of the volume
 int FatsSecCnt = 0; // FAT Area
 int MAX = -1;
 int fat_type = -1;
-
+void print_long_name(union DirEntry *root_dir) {
+    for (int i = 0; i <= 10; i += 2) {
+        if (root_dir->ldir.LDIR_Name1[i] != 0x00 &&
+            root_dir->ldir.LDIR_Name1[i] != 255)
+            putchar(root_dir->ldir.LDIR_Name1[i]);
+    }
+    for (int i = 0; i <= 12; i += 2) {
+        if (root_dir->ldir.LDIR_Name2[i] != 0x00 &&
+            root_dir->ldir.LDIR_Name2[i] != 255)
+            putchar(root_dir->ldir.LDIR_Name2[i]);
+    }
+    for (int i = 0; i <= 2; i += 2) {
+        if (root_dir->ldir.LDIR_Name3[i] != 0x00 &&
+            root_dir->ldir.LDIR_Name3[i] != 255)
+            putchar(root_dir->ldir.LDIR_Name3[i]);
+    }
+}
 void *get_data_from_sector(const struct BPB *hdr, int sector, int offset) {
     assert(hdr->BPB_BytsPerSec == 512 || hdr->BPB_BytsPerSec == 1024 ||
            hdr->BPB_BytsPerSec == 2048 || hdr->BPB_BytsPerSec == 4096);
     return (void *)hdr + sector * (hdr->BPB_BytsPerSec) + offset * 32;
+}
+
+void get_file(const struct BPB *hdr, const int sector, int *entry) {
+    union DirEntry *root_dir = get_data_from_sector(hdr, sector, *entry);
+    if (root_dir->dir.DIR_Attr == ATTR_ARCHIVE) {
+        // end the recursion.
+        printf("%s\n", root_dir->dir.DIR_Name);
+        return;
+    }
+    
+    if (root_dir->dir.DIR_Attr == ATTR_DIRECTORY) {
+        //(*entry)++;
+        //get_file(hdr, sector, entry);
+        printf(".\\%s", root_dir->dir.DIR_Name);
+        return;
+    }
+
+    if (root_dir->dir.DIR_Attr == ATTR_LONG_NAME) {
+        (*entry)++;
+        get_file(hdr, sector, entry);
+        print_long_name(root_dir);
+    }
 }
 
 void root_directory(const struct BPB *hdr) {
@@ -41,44 +79,36 @@ void root_directory(const struct BPB *hdr) {
         assert(false);
     }
 
-    for (int i = 1; i < RootEntCnt; i++) {
-        union DirEntry *root_dir =
-            get_data_from_sector(hdr, FirstRootDirSecNum, i);
+    int i=0;
+    while(i < RootEntCnt) {
+        union DirEntry *root_dir = get_data_from_sector(hdr, FirstRootDirSecNum, i);
         if (root_dir->dir.DIR_Name[0] == 0xe5) {
             // indicates the directory entry is free (available).
+            i++;
             continue;
         }
         if (root_dir->dir.DIR_Name[0] == 0x00) {
             // also indicates the directory entry is free (available). However,
             // DIR_Name[0] = 0x00 is an additional indicator that all directory
             // entries following the current free entry are also free.
+            i++;
             continue;
         }
+        get_file(hdr, FirstRootDirSecNum, &i);
+        printf("\n\n");
+
         switch (root_dir->dir.DIR_Attr) {
-        case ATTR_DIRECTORY:
-            printf("directory: %s\n", root_dir->dir.DIR_Name);
+        case ATTR_READ_ONLY:
+            printf("read only: %s\n", root_dir->dir.DIR_Name);
             break;
-        case ATTR_ARCHIVE:
-            printf("archive: %s\n", root_dir->dir.DIR_Name);
+        case ATTR_HIDDEN:
+            printf("hidden: %s\n", root_dir->dir.DIR_Name);
             break;
-        case ATTR_LONG_NAME:
-            printf("long name: ");
-            for (int i = 0; i < 10; i += 2) {
-                if (root_dir->ldir.LDIR_Name1[i] != 0x00 &&
-                    root_dir->ldir.LDIR_Name1[i] != 255)
-                    putchar(root_dir->ldir.LDIR_Name1[i]);
-            }
-            for (int i = 0; i < 12; i += 2) {
-                if (root_dir->ldir.LDIR_Name2[i] != 0x00 &&
-                    root_dir->ldir.LDIR_Name2[i] != 255)
-                    putchar(root_dir->ldir.LDIR_Name2[i]);
-            }
-            for (int i = 0; i < 2; i += 2) {
-                if (root_dir->ldir.LDIR_Name3[i] != 0x00 &&
-                    root_dir->ldir.LDIR_Name3[i] != 255)
-                    putchar(root_dir->ldir.LDIR_Name3[i]);
-            }
-            putchar('\n');
+        case ATTR_SYSTEM:
+            printf("system: %s\n", root_dir->dir.DIR_Name);
+            break;
+        case ATTR_VOLUME_ID:
+            printf("volume id: %s\n", root_dir->dir.DIR_Name);
             break;
         default:
             break;
@@ -86,6 +116,7 @@ void root_directory(const struct BPB *hdr) {
 
         assert(root_dir->dir.DIR_Name[0] !=
                0x20); // names cannot start with a space character.
+        i++;
     }
     // union DirEntry *root_dir = get_data_from_sector(hdr, FirstRootDirSecNum);
     // printf("Filesize: %u\n", root_dir->dir.DIR_FileSize);
