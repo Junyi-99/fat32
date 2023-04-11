@@ -1,0 +1,14 @@
+# clang-format configuration file. Intended for clang-format >= 11.
+#
+# For more information, see:
+#   Documentation/process/clang-format.rst
+#   https://clang.llvm.org/docs/ClangFormat.html
+#   https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+#
+---
+BasedOnStyle: LLVM
+ColumnLimit: 80
+IndentWidth: 4
+AlignConsecutiveMacros: Consecutive
+AlignTrailingComments: true
+UseTab: Never
