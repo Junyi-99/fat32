@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define LAST_LONG_ENTRY 0x40
+
 /*
  * Boot Sector and BPB
  * RTFM: Section 3.1 - 3.3
@@ -10,22 +12,22 @@
 struct BPB {
     uint8_t BS_jmpBoot[3];   /* offset 0 */
     uint8_t BS_OEMName[8];   /* offset 3 */
-    uint16_t BPB_BytsPerSec; /* offset 11 */
-    uint8_t BPB_SecPerClus;  /* offset 13 */
-    uint16_t BPB_RsvdSecCnt; /* offset 14 */
-    uint8_t BPB_NumFATs;     /* offset 16 */
-    uint16_t BPB_RootEntCnt; /* offset 17 */
-    uint16_t BPB_TotSec16;   /* offset 19 */
-    uint8_t BPB_Media;       /* offset 21 */
-    uint16_t BPB_FATSz16;    /* offset 22 */
-    uint16_t BPB_SecPerTrk;  /* offset 24 */
-    uint16_t BPB_NumHeads;   /* offset 26 */
-    uint32_t BPB_HiddSec;    /* offset 28 */
+    uint16_t BPB_BytsPerSec; /* offset 11 bytes per sector */
+    uint8_t BPB_SecPerClus;  /* offset 13 sectors per cluster */
+    uint16_t BPB_RsvdSecCnt; /* offset 14 Number of reserved sectors */
+    uint8_t BPB_NumFATs;     /* offset 16 The count of file allocation tables (FATs) on the volume */
+    uint16_t BPB_RootEntCnt; /* offset 17 root文件夹有多少 entry */
+    uint16_t BPB_TotSec16;   /* offset 19 total count of sectors on the volume */
+    uint8_t BPB_Media;       /* offset 21 媒体类型 */
+    uint16_t BPB_FATSz16;    /* offset 22 Count of sectors occupied by one FAT */
+    uint16_t BPB_SecPerTrk;  /* offset 24 Sectors per track for interrupt 0x13. */
+    uint16_t BPB_NumHeads;   /* offset 26 Number of heads for interrupt 0x13 */
+    uint32_t BPB_HiddSec;    /* offset 28 hidden sectors preceding the partition that contains this FAT volume. This field is generally only relevant for media visible on interrupt 0x13. */
     uint32_t BPB_TotSec32;   /* offset 32 */
     union {
         // Extended BPB structure for FAT12 and FAT16 volumes
         struct {
-            uint8_t BS_DrvNum;        /* offset 36 */
+            uint8_t BS_DrvNum;        /* offset 36 Interrupt 0x13 drive number. Set value to 0x80 or 0x00. */
             uint8_t BS_Reserved1;     /* offset 37 */
             uint8_t BS_BootSig;       /* offset 38 */
             uint8_t BS_VolID[4];      /* offset 39 */
