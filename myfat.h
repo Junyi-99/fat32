@@ -64,10 +64,11 @@ class FileRecord {
     uint32_t cluster; // start cluster
     uint32_t size;    // file size
     enum FileRecordType type;
+    std::vector<union DirEntry *> long_name_records;
 
   public:
     FileRecord() {}
-
+    void append_direntry(union DirEntry *entry) { this->long_name_records.push_back(entry); }
     void set_cluster(uint32_t cluster) { this->cluster = cluster; }
     void append_name(std::string name) { this->lname = name + this->lname; }
     void set_name(std::string name) {
@@ -88,6 +89,7 @@ class FileRecord {
             }
         }
     }
+    std::vector<union DirEntry *> get_long_name_records() { return long_name_records; }
     void set_size(uint32_t size) { this->size = size; }
     void set_type(enum FileRecordType type) { this->type = type; }
     std::string get_name() { return name; }
@@ -238,6 +240,6 @@ class FAT {
     int FatsSecCnt = 0; // FAT Area
     int RootDirSec = 0;
     int FirstDataSector = 0;
-
+    uint32_t *fat_table = nullptr;
     off_t size;
 };

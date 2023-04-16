@@ -10,8 +10,56 @@ void hexdump(uint32_t *buf, int len) {
 }
 
 bool FAT::remove(std::string filename) {
-    throw std::runtime_error("not implemented");
-    return false;
+    std::vector<std::string> src_split;
+    std::string src_tmp = filename;
+    while (src_tmp.find("/") != std::string::npos) {
+        std::string substr = src_tmp.substr(0, src_tmp.find("/"));
+        if (substr.length() > 0) {
+            src_split.push_back(substr);
+        }
+        src_tmp = src_tmp.substr(src_tmp.find("/") + 1);
+    }
+    src_split.push_back(src_tmp);
+    DirInfo di = list(); // root dir
+
+    std::string fname = src_split.back();
+    src_split.pop_back();
+
+    // 进入目标文件夹
+    while (src_split.size() > 0) {
+        std::string dname = src_split[0];
+        src_split.erase(src_split.begin());
+        if (exist_in_dir(dname, di, FileRecordType::DIRECTORY))
+            di = cd(dname, di);
+        else {
+            printf("error: %s is not a valid directory\n", dname.c_str());
+            return false;
+        }
+    }
+
+    FileRecord fr;
+    uint32_t begin = 0;
+    for (auto i : di.get_files()) {
+        if (i.get_lname() == fname) {
+            if (i.get_type() == FileRecordType::FILE) {
+                fr = i;
+                begin = i.get_cluster();
+                printf("Located file begins at cluster %d\n", begin);
+            }
+        }
+    }
+
+    auto clusters = get_clusters(begin);
+    for (auto i : clusters) {
+        fat_table[i] = 0;
+    }
+
+    for (auto i : fr.get_long_name_records()) {
+        i->dir.DIR_Name[0] = 0x00;
+    }
+
+    //throw std::runtime_error("not implemented");
+    return true;
 }
 
 bool FAT::copy_to_image(std::string src, std::string dst) {
@@ -61,7 +109,7 @@ bool FAT::copy_to_local(std::string src, std::string dst) {
                     return false;
                 }
                 printf("read file success at %p, size %d bytes\n", res.first, res.second);
-                
+
                 // 写到目标文件夹
                 std::ofstream out;
                 out.open(dst, std::ios::out | std::ios::binary);
@@ -71,7 +119,7 @@ bool FAT::copy_to_local(std::string src, std::string dst) {
                 }
                 out.write((char *)res.first, res.second);
                 out.close();
-                
+
                 return true;
             } else if (i.get_type() == FileRecordType::DIRECTORY) {
                 printf("error: %s is a directory\n", fname.c_str());
@@ -173,15 +221,17 @@ DirInfo FAT::list(uint32_t cluster) {
             uint32_t clusterId = (root_dir->dir.DIR_FstClusHI << 16) | root_dir->dir.DIR_FstClusLO;
             switch (root_dir->dir.DIR_Attr) {
             case ATTR_ARCHIVE:
+                fr.append_direntry(root_dir);
                 fr.set_name((char *)root_dir->dir.DIR_Name);
                 fr.set_type(FileRecordType::FILE);
                 fr.set_cluster(clusterId);
                 fr.set_size(root_dir->dir.DIR_FileSize);
                 di.add_file(fr);
                 fr = FileRecord();
-                //printf("%d %d archive: %s\n", clusterId, root_dir->dir.DIR_FstClusLO, root_dir->dir.DIR_Name);
+                // printf("%d %d archive: %s\n", clusterId, root_dir->dir.DIR_FstClusLO, root_dir->dir.DIR_Name);
                 break;
             case ATTR_DIRECTORY:
+                fr.append_direntry(root_dir);
                 fr.set_name((char *)root_dir->dir.DIR_Name);
                 fr.set_type(FileRecordType::DIRECTORY);
                 fr.set_cluster(clusterId);
@@ -191,6 +241,7 @@ DirInfo FAT::list(uint32_t cluster) {
                 // printf("directory: %s", root_dir->dir.DIR_Name);
                 break;
             case ATTR_LONG_NAME:
+                fr.append_direntry(root_dir);
                 fr.append_name(print_long_name(root_dir));
                 // printf("long name: ");
                 break;
@@ -247,7 +298,7 @@ void FAT::check() {
 FAT::~FAT() { munmap(hdr, size); }
 FAT::FAT(std::string diskimg) {
     diskimg = diskimg;
-    int fd = open(diskimg.c_str(), O_RDONLY);
+    int fd = open(diskimg.c_str(), O_RDWR);
     if (fd < 0) {
         perror("open");
         exit(1);
@@ -258,7 +309,7 @@ FAT::FAT(std::string diskimg) {
         perror("lseek");
         exit(1);
     }
-    hdr = (struct BPB *)mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    hdr = (struct BPB *)mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (hdr == (void *)-1) {
         perror("mmap");
         exit(1);
@@ -269,14 +320,11 @@ FAT::FAT(std::string diskimg) {
     if (fat_type == FatType::FAT32) {
         RootDirSec = hdr->BPB_RsvdSecCnt + hdr->fat32.BPB_FATSz32 * hdr->BPB_NumFATs;
         FirstDataSector = hdr->BPB_RsvdSecCnt + (hdr->BPB_NumFATs * hdr->fat32.BPB_FATSz32);
-
+        fat_table = (uint32_t *)(hdr->BPB_RsvdSecCnt * hdr->BPB_BytsPerSec + (uint8_t *)hdr);
         // int N = 2; // # of cluster
     }
 }
-uint32_t FAT::next_cluster(uint32_t current_cluster) {
-    uint32_t *fattable = (uint32_t *)(hdr->BPB_RsvdSecCnt * hdr->BPB_BytsPerSec + (uint8_t *)hdr);
-    return fattable[current_cluster];
-}
+uint32_t FAT::next_cluster(uint32_t current_cluster) { return fat_table[current_cluster]; }
 FatType FAT::check_fat_type() {
     int FATSz = 0;
     int TotSecCnt = 0;
