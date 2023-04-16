@@ -8,7 +8,8 @@ void hexdump(uint32_t *buf, int len) {
         }
     }
 }
-bool FAT::copy(std::string src, std::string dst) {
+
+bool FAT::copy_to_local(std::string src, std::string dst) {
     // split src with "/"
     std::vector<std::string> src_split;
     std::string src_tmp = src;
@@ -50,6 +51,7 @@ bool FAT::copy(std::string src, std::string dst) {
                     return false;
                 }
                 printf("read file success at %p, size %d bytes\n", res.first, res.second);
+                
                 // 写到目标文件夹
                 std::ofstream out;
                 out.open(dst, std::ios::out | std::ios::binary);
@@ -59,6 +61,7 @@ bool FAT::copy(std::string src, std::string dst) {
                 }
                 out.write((char *)res.first, res.second);
                 out.close();
+                
                 return true;
             } else if (i.get_type() == FileRecordType::DIRECTORY) {
                 printf("error: %s is a directory\n", fname.c_str());
@@ -166,7 +169,7 @@ DirInfo FAT::list(uint32_t cluster) {
                 fr.set_size(root_dir->dir.DIR_FileSize);
                 di.add_file(fr);
                 fr = FileRecord();
-                printf("%d %d archive: %s\n", clusterId, root_dir->dir.DIR_FstClusLO, root_dir->dir.DIR_Name);
+                //printf("%d %d archive: %s\n", clusterId, root_dir->dir.DIR_FstClusLO, root_dir->dir.DIR_Name);
                 break;
             case ATTR_DIRECTORY:
                 fr.set_name((char *)root_dir->dir.DIR_Name);

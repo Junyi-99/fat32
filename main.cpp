@@ -95,7 +95,7 @@ int main(int argc, char *argv[]) {
             src = src.substr(6);
             if (dst.find("local:") == 0) {
                 dst = dst.substr(6);
-                fat.copy(src, dst);
+                fat.copy_to_local(src, dst);
             } else {
                 print_help(argv);
                 exit(1);
@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
             src = src.substr(6);
             if (dst.find("image:") == 0) {
                 dst = dst.substr(6);
-                fat.copy(src, dst);
+                fat.copy_to_local(src, dst);
             } else {
                 print_help(argv);
                 exit(1);
