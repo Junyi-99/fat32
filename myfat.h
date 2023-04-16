@@ -5,9 +5,11 @@
 #include <cstring>
 #include <fcntl.h>
 #include <fstream>
+#include <ios>
 #include <iostream>
 #include <list>
 #include <locale>
+#include <math.h>
 #include <stdexcept>
 #include <stdlib.h>
 #include <string>
@@ -125,29 +127,29 @@ class FAT {
     bool remove(std::string filename);
     bool copy_to_local(std::string src, std::string dst);
     bool copy_to_image(std::string src, std::string dst);
-    void *get_data_from_sector(int sector, int offset) {
+
+    void *get_ptr_from_sector(int sector, int offset) {
         assert(hdr->BPB_BytsPerSec == 512 || hdr->BPB_BytsPerSec == 1024 || hdr->BPB_BytsPerSec == 2048 || hdr->BPB_BytsPerSec == 4096);
         return (uint8_t *)this->hdr + sector * (hdr->BPB_BytsPerSec) + offset * 32;
     }
 
-    void *get_data_from_cluster(int cluster) {
+    void *get_ptr_from_cluster(int cluster) {
         int sector = hdr->BPB_RsvdSecCnt + hdr->BPB_NumFATs * hdr->fat32.BPB_FATSz32 + (cluster - 2) * hdr->BPB_SecPerClus;
-        return get_data_from_sector(sector, 0);
+        return get_ptr_from_sector(sector, 0);
     }
 
     std::pair<uint8_t *, uint32_t> read_file_at_cluster(uint32_t cluster, uint32_t file_size) {
         printf("read file at cluster %d, size %d bytes\n", cluster, file_size);
         uint32_t read_bytes = 0;
-        int32_t remaining_bytes = file_size;
+        uint32_t remaining_bytes = file_size;
         uint8_t *ptr = (uint8_t *)malloc(file_size);
 
         while (remaining_bytes > 0 && cluster < MAX) {
-            int32_t cluster_bytes = hdr->BPB_SecPerClus * hdr->BPB_BytsPerSec;
             if (remaining_bytes < cluster_bytes) {
                 cluster_bytes = remaining_bytes;
             }
 
-            void *data_src = get_data_from_cluster(cluster);
+            void *data_src = get_ptr_from_cluster(cluster);
             memcpy(ptr + read_bytes, data_src, cluster_bytes);
             read_bytes += cluster_bytes;
             remaining_bytes -= cluster_bytes;
@@ -163,6 +165,49 @@ class FAT {
         }
 
         return std::make_pair(ptr, read_bytes);
+    }
+    bool write_bytes_to_cluster(uint32_t cluster, uint8_t *data, uint32_t size) {
+        
+        printf("write bytes to cluster %d, size %d bytes\n", cluster, size);
+        
+        if (size > cluster_bytes) {
+            throw std::runtime_error("write to cluser size is larger than one cluster size");
+        }
+
+        uint8_t * ptr = (uint8_t *)get_ptr_from_cluster(cluster);
+        memcpy(ptr, data, size);
+        return true;
+    }
+    std::pair<bool, DirInfo> get_file_dir(std::string filename) {
+
+        std::vector<std::string> src_split;
+        std::string src_tmp = filename;
+        while (src_tmp.find("/") != std::string::npos) {
+            std::string substr = src_tmp.substr(0, src_tmp.find("/"));
+            if (substr.length() > 0) {
+                src_split.push_back(substr);
+            }
+            src_tmp = src_tmp.substr(src_tmp.find("/") + 1);
+        }
+        src_split.push_back(src_tmp);
+        DirInfo di = list(); // root dir
+
+        std::string fname = src_split.back();
+        src_split.pop_back();
+        // src_split 剩下的就是 dir path 了
+
+        // 进入目标文件夹
+        while (src_split.size() > 0) {
+            std::string dname = src_split[0];
+            src_split.erase(src_split.begin());
+            if (exist_in_dir(dname, di, FileRecordType::DIRECTORY))
+                di = cd(dname, di);
+            else {
+                printf("error: %s is not a valid directory\n", dname.c_str());
+                return std::make_pair(false, DirInfo());
+            }
+        }
+        return std::make_pair(true,di);
     }
     DirInfo cd(std::string name, DirInfo di) {
         for (auto file : di.get_files()) {
@@ -194,11 +239,11 @@ class FAT {
 
     // DirEntry *get_dir_entry_from_cluster(int cluster, int entry_offset) {
 
-    //     return (DirEntry *)get_data_from_sector(sectors, entry_offset);
+    //     return (DirEntry *)get_ptr_from_sector(sectors, entry_offset);
     // }
 
     void get_file(const int sector, int *entry) {
-        union DirEntry *root_dir = (union DirEntry *)get_data_from_sector(sector, *entry);
+        union DirEntry *root_dir = (union DirEntry *)get_ptr_from_sector(sector, *entry);
         if (root_dir->dir.DIR_Attr == ATTR_ARCHIVE) {
             // end the recursion.
             printf("%s\n", root_dir->dir.DIR_Name);
@@ -233,9 +278,10 @@ class FAT {
 
     uint32_t next_cluster(uint32_t current_cluster);
     uint32_t MAX = -1;
+    std::pair<bool, FileRecord> file_exist(std::string path);
 
   private:
-    void foo(uint32_t fat_table[], int start_index);
+    void foo(uint32_t fat_table[], uint32_t start_index);
     std::string diskimg;
     FatType check_fat_type();
     FatType fat_type;
@@ -246,5 +292,7 @@ class FAT {
     int RootDirSec = 0;
     int FirstDataSector = 0;
     uint32_t *fat_table = nullptr;
+    uint32_t fat_table_entry_cnt = 0;
+    uint32_t cluster_bytes = 0; // 每个 cluster 能存多少 byte
     off_t size;
 };

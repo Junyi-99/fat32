@@ -107,7 +107,7 @@ int main(int argc, char *argv[]) {
             std::string dst = std::string(argv[4]);
             if (dst.find("image:") == 0) {
                 dst = dst.substr(6);
-                fat.copy_to_local(src, dst);
+                fat.copy_to_image(src, dst);
             } else {
                 print_help(argv);
                 exit(1);
