@@ -83,9 +83,9 @@ bool FAT::copy_to_image(std::string src, std::string dst) {
     uint32_t clusterBegin = clusters_available[0];
     uint32_t bytes_remain = file_size;
     for (size_t i = 0; i < cluster_needed; i++) {
-        size_t bytes = (i == cluster_needed - 1)? file_size % cluster_bytes : cluster_bytes;
-        uint8_t *buf = (uint8_t*)malloc(bytes);
-        //write_bytes_to_cluster(clusterBegin, buf, bytes);
+        size_t bytes = (i == cluster_needed - 1) ? file_size % cluster_bytes : cluster_bytes;
+        uint8_t *buf = (uint8_t *)malloc(bytes);
+        // write_bytes_to_cluster(clusterBegin, buf, bytes);
         bytes_remain -= bytes;
         free(buf);
         printf("write %ld bytes to cluster %d, remains %d bytes\n", bytes, clusterBegin, bytes_remain);
@@ -93,8 +93,30 @@ bool FAT::copy_to_image(std::string src, std::string dst) {
     }
 
     // create name entry for file
-    size_t name_entry_cnt = std::ceil((double)dst.length() / (double)11);
+    std::string filename = dst.substr(dst.find_last_of("/") + 1);
+    std::string name = filename.substr(0, filename.find_last_of("."));
+    std::string ext = filename.substr(filename.find_last_of(".") + 1);
+    size_t name_entry_cnt = std::ceil((double)name.length() / (double)11);
     union DirEntry *dir = new union DirEntry[name_entry_cnt];
+
+    // if name < 8 chars, use short name
+    if (name_entry_cnt == 1) {
+        // get file name from path
+        
+
+        for (size_t i = 0; i < 8; i++) {
+            dir[0].dir.DIR_Name[i] = (i < name.length()) ? toupper(name[i]) : ' ';
+        }
+        for (size_t i = 0; i < 3; i++) {
+            dir[0].dir.DIR_Name[i + 8] = (i < ext.length()) ? toupper(ext[i]) : ' ';
+        }
+
+        dir[0].dir.DIR_Attr = ATTR_ARCHIVE;
+        dir[0].dir.DIR_FstClusHI = clusters_available[0] >> 16;
+        dir[0].dir.DIR_FstClusLO = clusters_available[0] & 0xFFFF;
+        dir[0].dir.DIR_FileSize = file_size;
+    }
+    // else use long name
 
     // assign first entry to DirInfo
     auto res = get_file_dir(dst);
@@ -103,11 +125,48 @@ bool FAT::copy_to_image(std::string src, std::string dst) {
         return false;
     }
 
+    // 测试用
+    for (auto cluster : res.second.get_clusters()) {
+        for (int i = 0; i < DIR_ENTRY_CNT; i++) {
+            int sector = get_first_sector_from_cluster(cluster);                   // FirstDataSector at cluster 2
+            union DirEntry *root_dir = (DirEntry *)get_ptr_from_sector(sector, i); // 32byte
+            printf("cluster %d, entry %d, ", cluster, i);
+            switch (root_dir->dir.DIR_Attr) {
+            case 0x00:
+                memcpy(root_dir, &dir[0], 32);
+                printf("++++++ this directory cluster is FINISHED ++++++++\n");
+                goto endthiscluster;
+                break;
+            case ATTR_LONG_NAME:
+                printf("  long name: ");
+                printf("%s\n", print_long_name(root_dir).c_str());
+                break;
+            case ATTR_ARCHIVE:
+                printf("file: ");
+                printf("%s\n", root_dir->dir.DIR_Name);
+                break;
+            case ATTR_DIRECTORY:
+                printf("dir: ");
+                printf("%s\n", root_dir->dir.DIR_Name);
+                break;
+            default:
+                printf("unknown %x\n", root_dir->dir.DIR_Attr);
+                break;
+            }
+        }
+        endthiscluster:
+        ;
+    }
+
+    // 测试用
+
     DirInfo di = res.second;
 
     // for (size_t i = 0; i < 200; i++) {
     //    foo(fat_table, i);
     // }
+
+    // TODO: name entry 超过一个 cluster 的情况
     throw std::runtime_error("not implemented");
     return false;
 }
@@ -233,7 +292,7 @@ void FAT::get_fat_entry(int cluster) {
         }
     }
 }
-
+size_t FAT::get_first_sector_from_cluster(int cluster) { return (cluster - 2) * hdr->BPB_SecPerClus + FirstDataSector; }
 std::string FAT::print_long_name(union DirEntry *root_dir) {
     std::string result;
     for (int i = 0; i < 10; i += 2) {
@@ -251,16 +310,17 @@ std::string FAT::print_long_name(union DirEntry *root_dir) {
     return result;
 }
 DirInfo FAT::list(uint32_t cluster) {
-    int ENTRY_CNT = hdr->BPB_SecPerClus * hdr->BPB_BytsPerSec / 32; // 32byte per DirEntry
+
     uint32_t current_cluster = cluster;
     DirInfo di = DirInfo();
     while (current_cluster < MAX) {
+        di.add_cluster(current_cluster);
         FileRecord fr = FileRecord();
 
         int i = 0;
-        while (i < ENTRY_CNT) {
-            int sector = (current_cluster - 2) * hdr->BPB_SecPerClus + FirstDataSector; // FirstDataSector at cluster 2
-            union DirEntry *root_dir = (DirEntry *)get_ptr_from_sector(sector, i);      // 32byte
+        while (i < DIR_ENTRY_CNT) {
+            int sector = get_first_sector_from_cluster(current_cluster);           // FirstDataSector at cluster 2
+            union DirEntry *root_dir = (DirEntry *)get_ptr_from_sector(sector, i); // 32byte
             if (root_dir->dir.DIR_Name[0] == 0xe5 || root_dir->dir.DIR_Name[0] == 0x00) {
                 // 0xe5 and 0x00 indicates the directory entry is free (available).
                 // However, DIR_Name[0] = 0x00 is an additional indicator that
@@ -375,6 +435,7 @@ FAT::FAT(std::string diskimg) {
         fat_table = (uint32_t *)(hdr->BPB_RsvdSecCnt * hdr->BPB_BytsPerSec + (uint8_t *)hdr);
         fat_table_entry_cnt = hdr->fat32.BPB_FATSz32 * hdr->BPB_BytsPerSec / sizeof(uint32_t);
         cluster_bytes = hdr->BPB_SecPerClus * hdr->BPB_BytsPerSec;
+        DIR_ENTRY_CNT = hdr->BPB_SecPerClus * hdr->BPB_BytsPerSec / 32;
         // int N = 2; // # of cluster
     }
 }

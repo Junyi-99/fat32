@@ -103,17 +103,20 @@ class FileRecord {
 
 class DirInfo {
     std::vector<FileRecord> files;
-
+    std::vector<uint32_t> clusters; // 目录占了哪些 cluster
   public:
     DirInfo() { files = std::vector<FileRecord>(); };
     std::vector<FileRecord> get_files() { return files; }
     void add_file(FileRecord file) { files.push_back(file); }
+    void add_cluster(uint32_t cluster) { clusters.push_back(cluster); }
+    std::vector<uint32_t> get_clusters() { return clusters; }
 };
 
 class FAT {
   public:
     FAT(std::string diskimg);
     ~FAT();
+    size_t get_first_sector_from_cluster(int cluster);
     void sync_backup() {
         uint8_t *ptr = (uint8_t *)this->hdr;
         if (hdr->BPB_NumFATs == 2)
@@ -167,14 +170,14 @@ class FAT {
         return std::make_pair(ptr, read_bytes);
     }
     bool write_bytes_to_cluster(uint32_t cluster, uint8_t *data, uint32_t size) {
-        
+
         printf("write bytes to cluster %d, size %d bytes\n", cluster, size);
-        
+
         if (size > cluster_bytes) {
             throw std::runtime_error("write to cluser size is larger than one cluster size");
         }
 
-        uint8_t * ptr = (uint8_t *)get_ptr_from_cluster(cluster);
+        uint8_t *ptr = (uint8_t *)get_ptr_from_cluster(cluster);
         memcpy(ptr, data, size);
         return true;
     }
@@ -207,7 +210,7 @@ class FAT {
                 return std::make_pair(false, DirInfo());
             }
         }
-        return std::make_pair(true,di);
+        return std::make_pair(true, di);
     }
     DirInfo cd(std::string name, DirInfo di) {
         for (auto file : di.get_files()) {
@@ -218,6 +221,16 @@ class FAT {
             }
         }
         return DirInfo();
+    }
+    unsigned char ChkSum(unsigned char *pFcbName) {
+        short FcbNameLen;
+        unsigned char Sum;
+        Sum = 0;
+        for (FcbNameLen = 11; FcbNameLen != 0; FcbNameLen--) {
+            // NOTE: The operation is an unsigned char rotate right
+            Sum = ((Sum & 1) ? 0x80 : 0) + (Sum >> 1) + *pFcbName++;
+        }
+        return Sum;
     }
     std::vector<uint32_t> get_clusters(uint32_t cluster) {
         std::vector<uint32_t> res;
@@ -242,32 +255,6 @@ class FAT {
     //     return (DirEntry *)get_ptr_from_sector(sectors, entry_offset);
     // }
 
-    void get_file(const int sector, int *entry) {
-        union DirEntry *root_dir = (union DirEntry *)get_ptr_from_sector(sector, *entry);
-        if (root_dir->dir.DIR_Attr == ATTR_ARCHIVE) {
-            // end the recursion.
-            printf("%s\n", root_dir->dir.DIR_Name);
-            return;
-        }
-
-        if (root_dir->dir.DIR_Attr == ATTR_DIRECTORY) {
-            //(*entry)++;
-            // get_file(hdr, sector, entry);
-            printf("cluster HI=%u LO=%u name=.\\%s", root_dir->dir.DIR_FstClusHI, root_dir->dir.DIR_FstClusLO, root_dir->dir.DIR_Name);
-
-            // DIR_FileSize for the corresponding entry must always be 0
-            // (even though clusters may have been allocated for the
-            // directory).
-            assert(root_dir->dir.DIR_FileSize == 0);
-            return;
-        }
-
-        if (root_dir->dir.DIR_Attr == (ATTR_LONG_NAME)) {
-            (*entry)++;
-            get_file(sector, entry);
-            print_long_name(root_dir);
-        }
-    }
 
     void fat_cluster_list(uint32_t begin_cluster) {
         while (begin_cluster < MAX) {
@@ -291,6 +278,7 @@ class FAT {
     int FatsSecCnt = 0; // FAT Area
     int RootDirSec = 0;
     int FirstDataSector = 0;
+    int DIR_ENTRY_CNT = 0; // 32byte per DirEntry
     uint32_t *fat_table = nullptr;
     uint32_t fat_table_entry_cnt = 0;
     uint32_t cluster_bytes = 0; // 每个 cluster 能存多少 byte
