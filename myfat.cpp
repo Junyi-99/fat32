@@ -9,6 +9,16 @@ void hexdump(uint32_t *buf, int len) {
     }
 }
 
+bool FAT::remove(std::string filename) {
+    throw std::runtime_error("not implemented");
+    return false;
+}
+
+bool FAT::copy_to_image(std::string src, std::string dst) {
+    throw std::runtime_error("not implemented");
+    return false;
+}
+
 bool FAT::copy_to_local(std::string src, std::string dst) {
     // split src with "/"
     std::vector<std::string> src_split;

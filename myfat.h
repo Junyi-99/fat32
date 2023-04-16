@@ -115,7 +115,9 @@ class FAT {
     DirInfo list(uint32_t cluster);
     std::string print_long_name(union DirEntry *root_dir);
     void get_fat_entry(int cluster);
+    bool remove(std::string filename);
     bool copy_to_local(std::string src, std::string dst);
+    bool copy_to_image(std::string src, std::string dst);
     void *get_data_from_sector(int sector, int offset) {
         assert(hdr->BPB_BytsPerSec == 512 || hdr->BPB_BytsPerSec == 1024 || hdr->BPB_BytsPerSec == 2048 || hdr->BPB_BytsPerSec == 4096);
         return (uint8_t *)this->hdr + sector * (hdr->BPB_BytsPerSec) + offset * 32;

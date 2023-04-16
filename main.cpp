@@ -83,16 +83,17 @@ int main(int argc, char *argv[]) {
     }
 
     if (strcmp(argv[2], "cp") == 0) {
-        if (argc < 5) {
+        if (argc < 4) {
             print_help(argv);
             exit(1);
         }
 
         std::string src = std::string(argv[3]);
-        std::string dst = std::string(argv[4]);
-
+        
         if (src.find("image:") == 0) {
+            // COPY FROM IMAGE TO LOCAL
             src = src.substr(6);
+            std::string dst = std::string(argv[4]);
             if (dst.find("local:") == 0) {
                 dst = dst.substr(6);
                 fat.copy_to_local(src, dst);
@@ -101,7 +102,9 @@ int main(int argc, char *argv[]) {
                 exit(1);
             }
         } else if (src.find("local:") == 0) {
+            // COPY FORM LOCAL TO IMAGE
             src = src.substr(6);
+            std::string dst = std::string(argv[4]);
             if (dst.find("image:") == 0) {
                 dst = dst.substr(6);
                 fat.copy_to_local(src, dst);
@@ -110,7 +113,10 @@ int main(int argc, char *argv[]) {
                 exit(1);
             }
         } else {
-            print_help(argv);
+            // PATH TO REMOVE
+            printf("Remove %s\n", src.c_str());
+            fat.remove(src);
+            // print_help(argv);
             exit(1);
         }
     }
