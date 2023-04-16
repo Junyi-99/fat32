@@ -142,7 +142,7 @@ class FAT {
     }
 
     std::pair<uint8_t *, uint32_t> read_file_at_cluster(uint32_t cluster, uint32_t file_size) {
-        printf("read file at cluster %d, size %d bytes\n", cluster, file_size);
+        //printf("read file at cluster %d, size %d bytes\n", cluster, file_size);
         uint32_t read_bytes = 0;
         uint32_t remaining_bytes = file_size;
         uint8_t *ptr = (uint8_t *)malloc(file_size);
@@ -156,22 +156,16 @@ class FAT {
             memcpy(ptr + read_bytes, data_src, cluster_bytes);
             read_bytes += cluster_bytes;
             remaining_bytes -= cluster_bytes;
-            printf("read cluster %d, %d bytes, remaining %d bytes\n", cluster, cluster_bytes, remaining_bytes);
+            //printf("read cluster %d, %d bytes, remaining %d bytes\n", cluster, cluster_bytes, remaining_bytes);
             cluster = next_cluster(cluster);
         }
-
-        // error in clusters. should not happened
-        if (remaining_bytes > 0) {
-            printf("still some bytes remaining, error in clusters\n");
-            free(ptr);
-            ptr = nullptr;
-        }
+        assert(remaining_bytes == 0);
 
         return std::make_pair(ptr, read_bytes);
     }
     bool write_bytes_to_cluster(uint32_t cluster, uint8_t *data, uint32_t size) {
 
-        printf("write bytes to cluster %d, size %d bytes\n", cluster, size);
+        //printf("write bytes to cluster %d, size %d bytes\n", cluster, size);
 
         if (size > cluster_bytes) {
             throw std::runtime_error("write to cluser size is larger than one cluster size");

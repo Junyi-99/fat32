@@ -41,10 +41,10 @@ bool FAT::copy_to_image(std::string src, std::string dst) {
 
     // if file exists, delete it then create a new one
     if (file_exist(dst).first) {
-        printf("file %s exists, delete it first\n", dst.c_str());
         remove(dst);
+        printf("file %s exists in image, deleted\n", dst.c_str());
     } else {
-        printf("file %s not found, create a new one\n", dst.c_str());
+        printf("creating file %s\n", dst.c_str());
     }
 
     // allocate cluster for files
@@ -60,36 +60,20 @@ bool FAT::copy_to_image(std::string src, std::string dst) {
     cluster_needed = std::ceil((double)file_size / (double)cluster_bytes);
     // 扫描可用的 cluster
     for (size_t i = 0; i < fat_table_entry_cnt; i++) {
-        uint32_t clusterId = i - 2;
         uint32_t &record = fat_table[i]; // clusterId points to record(the next clusterId)
         if (record == 0x0000000) {
             // printf("cluster %d is free\n", clusterId);
-            clusters_available.push_back(i - 2);
+            clusters_available.push_back(i);
             if (clusters_available.size() == cluster_needed) {
                 break;
             }
         }
     }
 
-    // 构造 cluster 链
-    for (size_t i = 0; i < clusters_available.size(); i++) {
-        uint32_t clusterId = clusters_available[i];
-        uint32_t pointsTo = (i == clusters_available.size() - 1) ? 0xFFFFFFF : clusters_available[i + 1];
-        fat_table[clusterId + 2] = pointsTo;
-        printf("cluster %d points to %d\n", clusterId, pointsTo);
-    }
-
-    // 复制数据到 cluster
-    uint32_t clusterBegin = clusters_available[0];
-    uint32_t bytes_remain = file_size;
-    for (size_t i = 0; i < cluster_needed; i++) {
-        size_t bytes = (i == cluster_needed - 1) ? file_size % cluster_bytes : cluster_bytes;
-        uint8_t *buf = (uint8_t *)malloc(bytes);
-        // write_bytes_to_cluster(clusterBegin, buf, bytes);
-        bytes_remain -= bytes;
-        free(buf);
-        printf("write %ld bytes to cluster %d, remains %d bytes\n", bytes, clusterBegin, bytes_remain);
-        clusterBegin = fat_table[clusterBegin + 2];
+    auto res = get_file_dir(dst);
+    if (res.first == false) {
+        printf("error: get file dir failed\n");
+        return false;
     }
 
     // create name entry for file
@@ -102,7 +86,6 @@ bool FAT::copy_to_image(std::string src, std::string dst) {
     // if name < 8 chars, use short name
     if (name_entry_cnt == 1) {
         // get file name from path
-        
 
         for (size_t i = 0; i < 8; i++) {
             dir[0].dir.DIR_Name[i] = (i < name.length()) ? toupper(name[i]) : ' ';
@@ -115,50 +98,85 @@ bool FAT::copy_to_image(std::string src, std::string dst) {
         dir[0].dir.DIR_FstClusHI = clusters_available[0] >> 16;
         dir[0].dir.DIR_FstClusLO = clusters_available[0] & 0xFFFF;
         dir[0].dir.DIR_FileSize = file_size;
+    } else {
+        printf("error: file name too long\n");
+        return false;
+    }
+
+    // 构造 cluster 链
+    for (size_t i = 0; i < clusters_available.size(); i++) {
+        uint32_t clusterId = clusters_available[i];
+        uint32_t pointsTo = (i == clusters_available.size() - 1) ? 0xFFFFFFF : clusters_available[i + 1];
+        fat_table[clusterId] = pointsTo;
+        // printf("cluster %d points to %d\n", clusterId, pointsTo);
     }
     // else use long name
 
     // assign first entry to DirInfo
-    auto res = get_file_dir(dst);
-    if (res.first == false) {
-        printf("error: get file dir failed\n");
-        return false;
-    }
 
     // 测试用
     for (auto cluster : res.second.get_clusters()) {
         for (int i = 0; i < DIR_ENTRY_CNT; i++) {
             int sector = get_first_sector_from_cluster(cluster);                   // FirstDataSector at cluster 2
             union DirEntry *root_dir = (DirEntry *)get_ptr_from_sector(sector, i); // 32byte
-            printf("cluster %d, entry %d, ", cluster, i);
-            switch (root_dir->dir.DIR_Attr) {
-            case 0x00:
+            // printf("cluster %d, entry %d, Name0: %d", cluster, i, root_dir->dir.DIR_Name[0]);
+            if (root_dir->dir.DIR_Name[0] == 0x00) {
+                // printf("  this directory is FINISHED\n");
                 memcpy(root_dir, &dir[0], 32);
-                printf("++++++ this directory cluster is FINISHED ++++++++\n");
-                goto endthiscluster;
-                break;
-            case ATTR_LONG_NAME:
-                printf("  long name: ");
-                printf("%s\n", print_long_name(root_dir).c_str());
-                break;
-            case ATTR_ARCHIVE:
-                printf("file: ");
-                printf("%s\n", root_dir->dir.DIR_Name);
-                break;
-            case ATTR_DIRECTORY:
-                printf("dir: ");
-                printf("%s\n", root_dir->dir.DIR_Name);
-                break;
-            default:
-                printf("unknown %x\n", root_dir->dir.DIR_Attr);
-                break;
+                goto endthefinding;
+            } else if (root_dir->dir.DIR_Name[0] == 0xe5) {
+                // printf("  this entry is free to use\n");
+                memcpy(root_dir, &dir[0], 32);
+                goto endthefinding;
+            } else {
+                // switch (root_dir->dir.DIR_Attr) {
+                // case ATTR_LONG_NAME:
+                //     printf("  long name: ");
+                //     printf("%s\n", print_long_name(root_dir).c_str());
+                //     break;
+                // case ATTR_ARCHIVE:
+                //     printf("file: ");
+                //     printf("%s\n", root_dir->dir.DIR_Name);
+                //     break;
+                // case ATTR_DIRECTORY:
+                //     printf("dir: ");
+                //     printf("%s\n", root_dir->dir.DIR_Name);
+                //     break;
+                // default:
+                //     printf("unknown %x\n", root_dir->dir.DIR_Attr);
+                //     break;
+                // }
             }
         }
-        endthiscluster:
-        ;
     }
 
+    printf("Due to time limit, I didn't implement the function of creating new cluster for the directory entry\n");
+    return false;
+    // create new cluster for file
+
+endthefinding:;
     // 测试用
+
+    // 复制数据到 cluster
+    uint32_t clusterBegin = clusters_available[0];
+    uint32_t bytes_remain = file_size;
+    for (size_t i = 0; i < cluster_needed; i++) {
+        size_t bytes = bytes_remain > cluster_bytes ? cluster_bytes : bytes_remain;
+
+        // size_t bytes = (i == cluster_needed - 1 && bytes_remain < cluster_bytes) ? file_size % cluster_bytes : cluster_bytes;
+        uint8_t *buf = (uint8_t *)malloc(bytes);
+        in.read((char *)buf, bytes);
+        write_bytes_to_cluster(clusterBegin, buf, bytes);
+        bytes_remain -= bytes;
+        free(buf);
+        // printf("write %ld bytes to cluster %d, remains %d bytes\n", bytes, clusterBegin, bytes_remain);
+        clusterBegin = fat_table[clusterBegin];
+    }
+
+    // print fat table
+    // for (size_t i = 0; i < 30; i++) {
+    //     printf("cluster %d ==> %d\n", i, fat_table[i]);
+    // }
 
     DirInfo di = res.second;
 
@@ -167,8 +185,13 @@ bool FAT::copy_to_image(std::string src, std::string dst) {
     // }
 
     // TODO: name entry 超过一个 cluster 的情况
-    throw std::runtime_error("not implemented");
-    return false;
+    // throw std::runtime_error("not implemented");
+    FSInfo *info = (FSInfo *)get_ptr_from_sector(hdr->fat32.BPB_FSInfo, 0);
+    info->FSI_Free_Count -= cluster_needed; // TODO: check free clusters before write
+
+    sync_backup();
+    printf("successfully copy: %s, into image: %s\n", src.c_str(), dst.c_str());
+    return true;
 }
 
 std::pair<bool, FileRecord> FAT::file_exist(std::string path) {
@@ -225,7 +248,7 @@ bool FAT::copy_to_local(std::string src, std::string dst) {
         printf("error: read file failed\n");
         return false;
     }
-    printf("read file success at %p, size %d bytes\n", res.first, res.second);
+    printf("read file: successfully read %d bytes\n", res.second);
 
     // 写到目标文件夹
     std::ofstream out;
@@ -236,7 +259,7 @@ bool FAT::copy_to_local(std::string src, std::string dst) {
     }
     out.write((char *)res.first, res.second);
     out.close();
-
+    printf("write file: successfully write to %s\n", dst.c_str());
     free(res.first);
     return true;
 }
