@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstring>
 #include <fcntl.h>
+#include <iostream>
 #include <list>
 #include <locale>
 #include <stdexcept>
@@ -59,10 +60,12 @@ class FileRecord {
     std::string lname;
     std::string name;
     uint32_t cluster; // start cluster
+    uint32_t size;    // file size
     enum FileRecordType type;
 
   public:
     FileRecord() {}
+
     void set_cluster(uint32_t cluster) { this->cluster = cluster; }
     void append_name(std::string name) { this->lname = name + this->lname; }
     void set_name(std::string name) {
@@ -76,15 +79,18 @@ class FileRecord {
             trim(extension);
             std::transform(fname.begin(), fname.end(), fname.begin(), [](unsigned char c) { return std::tolower(c); });
             std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return std::tolower(c); });
-            if(extension.empty()) {
+            if (extension.empty()) {
                 this->lname = fname;
             } else {
-            this->lname = fname + "." + extension;}
+                this->lname = fname + "." + extension;
+            }
         }
     }
+    void set_size(uint32_t size) { this->size = size; }
     void set_type(enum FileRecordType type) { this->type = type; }
     std::string get_name() { return name; }
     std::string get_lname() { return lname; }
+    uint32_t get_size() { return size; }
     uint32_t get_cluster() { return cluster; }
     enum FileRecordType get_type() { return type; }
 };
@@ -107,10 +113,72 @@ class FAT {
     DirInfo list(uint32_t cluster);
     std::string print_long_name(union DirEntry *root_dir);
     void get_fat_entry(int cluster);
-
+    bool copy(std::string src, std::string dst);
     void *get_data_from_sector(int sector, int offset) {
         assert(hdr->BPB_BytsPerSec == 512 || hdr->BPB_BytsPerSec == 1024 || hdr->BPB_BytsPerSec == 2048 || hdr->BPB_BytsPerSec == 4096);
         return (uint8_t *)this->hdr + sector * (hdr->BPB_BytsPerSec) + offset * 32;
+    }
+
+    void *get_data_from_cluster(int cluster) {
+        int sector = hdr->BPB_RsvdSecCnt + hdr->BPB_NumFATs * hdr->fat32.BPB_FATSz32 + cluster * hdr->BPB_SecPerClus;
+        return get_data_from_sector(sector, 0);
+    }
+
+    uint8_t *read_file_at_cluster(uint32_t cluster, uint32_t file_size) {
+        printf("read file at cluster %d, size %d bytes\n", cluster, file_size);
+        uint32_t read_bytes = 0;
+        int32_t remaining_bytes = file_size;
+        uint8_t *ptr = (uint8_t *)malloc(file_size);
+
+        while (remaining_bytes > 0 && cluster < MAX) {
+            int32_t cluster_bytes = hdr->BPB_SecPerClus * hdr->BPB_BytsPerSec;
+            if (remaining_bytes < cluster_bytes) {
+                cluster_bytes = remaining_bytes;
+            }
+
+            void *data_src = get_data_from_cluster(cluster);
+            memcpy(ptr + read_bytes, data_src, cluster_bytes);
+            read_bytes += cluster_bytes;
+            remaining_bytes -= cluster_bytes;
+            printf("read cluster %d, %d bytes, remaining %d bytes\n", cluster, cluster_bytes, remaining_bytes);
+            cluster = next_cluster(cluster);
+        }
+
+        // error in clusters. should not happened
+        if (remaining_bytes > 0) {
+            printf("still some bytes remaining, error in clusters\n");
+            free(ptr);
+            ptr = nullptr;
+        }
+
+        return ptr;
+    }
+    DirInfo cd(std::string name, DirInfo di) {
+        for (auto file : di.get_files()) {
+            if (file.get_lname() == name) {
+                if (file.get_type() == FileRecordType::DIRECTORY) {
+                    return list(file.get_cluster());
+                }
+            }
+        }
+        return DirInfo();
+    }
+    std::vector<uint32_t> get_clusters(uint32_t cluster) {
+        std::vector<uint32_t> res;
+        while (cluster < 0x0ffffff8) {
+            res.push_back(cluster);
+            cluster = next_cluster(cluster);
+        }
+        return res;
+    }
+
+    bool exist_in_dir(std::string name, DirInfo di, FileRecordType type) {
+        for (auto file : di.get_files()) {
+            if (file.get_lname() == name && file.get_type() == type) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // DirEntry *get_dir_entry_from_cluster(int cluster, int entry_offset) {
@@ -146,7 +214,7 @@ class FAT {
     }
 
     void fat_cluster_list(uint32_t begin_cluster) {
-        while(begin_cluster < MAX) {
+        while (begin_cluster < MAX) {
             printf("%d ", begin_cluster);
             begin_cluster = next_cluster(begin_cluster);
         }
@@ -154,6 +222,7 @@ class FAT {
 
     uint32_t next_cluster(uint32_t current_cluster);
     uint32_t MAX = -1;
+
   private:
     void foo(uint32_t fat_table[], int start_index);
     std::string diskimg;

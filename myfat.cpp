@@ -8,7 +8,58 @@ void hexdump(uint32_t *buf, int len) {
         }
     }
 }
+bool FAT::copy(std::string src, std::string dst) {
+    // split src with "/"
+    std::vector<std::string> src_split;
+    std::string src_tmp = src;
+    while (src_tmp.find("/") != std::string::npos) {
+        std::string substr = src_tmp.substr(0, src_tmp.find("/"));
+        if (substr.length() > 0) {
+            src_split.push_back(substr);
+        }
+        src_tmp = src_tmp.substr(src_tmp.find("/") + 1);
+    }
+    src_split.push_back(src_tmp);
 
+    DirInfo di = list(); // root dir
+
+    std::string fname = src_split.back();
+    src_split.pop_back();
+
+    // 进入目标文件夹
+    while (src_split.size() > 0) {
+        std::string dname = src_split[0];
+        src_split.erase(src_split.begin());
+        if (exist_in_dir(dname, di, FileRecordType::DIRECTORY))
+            di = cd(dname, di);
+        else {
+            printf("error: %s is not a valid directory\n", dname.c_str());
+            return false;
+        }
+    }
+
+    // 读文件
+    uint8_t *buf = nullptr;
+    for (auto i : di.get_files()) {
+        if (i.get_lname() == fname) {
+            if (i.get_type() == FileRecordType::FILE) {
+                printf("read file: %s\n", i.get_lname().c_str());
+                buf = read_file_at_cluster(i.get_cluster(), i.get_size());
+                if (buf == nullptr) {
+                    printf("error: read file failed\n");
+                    return false;
+                }
+                printf("read file success at %p\n", buf);
+                printf("read file success: %s\n", buf);
+                return true;
+            } else if (i.get_type() == FileRecordType::DIRECTORY) {
+                printf("error: %s is a directory\n", fname.c_str());
+                return false;
+            }
+        }
+    }
+    return false;
+}
 void FAT::foo(uint32_t fat_table[], int start_index) {
     uint32_t record = fat_table[start_index];
     printf("index: %d, record: %d, ", start_index, record);
@@ -103,36 +154,38 @@ DirInfo FAT::list(uint32_t cluster) {
                 fr.set_name((char *)root_dir->dir.DIR_Name);
                 fr.set_type(FileRecordType::FILE);
                 fr.set_cluster(clusterId);
+                fr.set_size(root_dir->dir.DIR_FileSize);
                 di.add_file(fr);
                 fr = FileRecord();
-                //printf("archive: %s", root_dir->dir.DIR_Name);
+                printf("%d %d archive: %s\n", clusterId, root_dir->dir.DIR_FstClusLO, root_dir->dir.DIR_Name);
                 break;
             case ATTR_DIRECTORY:
                 fr.set_name((char *)root_dir->dir.DIR_Name);
                 fr.set_type(FileRecordType::DIRECTORY);
                 fr.set_cluster(clusterId);
+                fr.set_size(root_dir->dir.DIR_FileSize);
                 di.add_file(fr);
                 fr = FileRecord();
-                //printf("directory: %s", root_dir->dir.DIR_Name);
+                // printf("directory: %s", root_dir->dir.DIR_Name);
                 break;
             case ATTR_LONG_NAME:
                 fr.append_name(print_long_name(root_dir));
                 // printf("long name: ");
                 break;
             case ATTR_READ_ONLY:
-                //printf("read only: %s", root_dir->dir.DIR_Name);
+                // printf("read only: %s", root_dir->dir.DIR_Name);
                 break;
             case ATTR_HIDDEN:
-                //printf("hidden: %s", root_dir->dir.DIR_Name);
+                // printf("hidden: %s", root_dir->dir.DIR_Name);
                 break;
             case ATTR_SYSTEM:
-                //printf("system: %s", root_dir->dir.DIR_Name);
+                // printf("system: %s", root_dir->dir.DIR_Name);
                 break;
             case ATTR_VOLUME_ID:
-                //printf("volume id: %s", root_dir->dir.DIR_Name);
+                // printf("volume id: %s", root_dir->dir.DIR_Name);
                 break;
             default:
-                //printf("unknown: %s", root_dir->dir.DIR_Name);
+                // printf("unknown: %s", root_dir->dir.DIR_Name);
                 break;
             }
             assert(root_dir->dir.DIR_Name[0] != 0x20); // names cannot start with a space character.
@@ -152,7 +205,7 @@ DirInfo FAT::list() {
     uint32_t rootDirClusterNum = hdr->fat32.BPB_RootClus;
     int dataSecCnt = (hdr->BPB_TotSec32 - hdr->BPB_RsvdSecCnt - (hdr->BPB_NumFATs * hdr->fat32.BPB_FATSz32));
 
-    return list(rootDirClusterNum);  
+    return list(rootDirClusterNum);
 }
 
 void FAT::check() {

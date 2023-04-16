@@ -42,7 +42,7 @@ void ls(FAT &fat, uint32_t cluster, std::string prefix) {
     }
 
     if (cluster == 0) {
-        printf(".\n");
+        // printf(".\n");
         info = fat.list();
     } else {
         info = fat.list(cluster);
@@ -83,6 +83,36 @@ int main(int argc, char *argv[]) {
     }
 
     if (strcmp(argv[2], "cp") == 0) {
+        if (argc < 5) {
+            print_help(argv);
+            exit(1);
+        }
+
+        std::string src = std::string(argv[3]);
+        std::string dst = std::string(argv[4]);
+
+        if (src.find("image:") == 0) {
+            src = src.substr(6);
+            if (dst.find("local:") == 0) {
+                dst = dst.substr(6);
+                fat.copy(src, dst);
+            } else {
+                print_help(argv);
+                exit(1);
+            }
+        } else if (src.find("local:") == 0) {
+            src = src.substr(6);
+            if (dst.find("image:") == 0) {
+                dst = dst.substr(6);
+                fat.copy(src, dst);
+            } else {
+                print_help(argv);
+                exit(1);
+            }
+        } else {
+            print_help(argv);
+            exit(1);
+        }
     }
     // TODO: Support backup sector
     return 0;
