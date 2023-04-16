@@ -53,11 +53,14 @@ bool FAT::remove(std::string filename) {
     for (auto i : clusters) {
         fat_table[i] = 0;
     }
+    
+    FSInfo *info = (FSInfo *)get_data_from_sector(hdr->fat32.BPB_FSInfo, 0);
+    info->FSI_Free_Count += clusters.size();
 
     for (auto i : fr.get_long_name_records()) {
         i->dir.DIR_Name[0] = 0x00;
     }
-
+sync_backup();
     //throw std::runtime_error("not implemented");
     return true;
 }

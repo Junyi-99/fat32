@@ -3,8 +3,8 @@
 #include <assert.h>
 #include <cctype>
 #include <cstring>
-#include <fstream>
 #include <fcntl.h>
+#include <fstream>
 #include <iostream>
 #include <list>
 #include <locale>
@@ -112,6 +112,11 @@ class FAT {
   public:
     FAT(std::string diskimg);
     ~FAT();
+    void sync_backup() {
+        uint8_t *ptr = (uint8_t *)this->hdr;
+        if (hdr->BPB_NumFATs == 2)
+            memcpy(ptr + (hdr->BPB_RsvdSecCnt + hdr->fat32.BPB_FATSz32) * hdr->BPB_BytsPerSec, ptr + hdr->BPB_RsvdSecCnt * hdr->BPB_BytsPerSec, hdr->BPB_BytsPerSec * hdr->fat32.BPB_FATSz32);
+    }
     void check();
     DirInfo list(); // list root dir
     DirInfo list(uint32_t cluster);
