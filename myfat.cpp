@@ -39,18 +39,26 @@ bool FAT::copy(std::string src, std::string dst) {
     }
 
     // 读文件
-    uint8_t *buf = nullptr;
+    auto res = std::pair<uint8_t *, uint32_t>(nullptr, 0);
     for (auto i : di.get_files()) {
         if (i.get_lname() == fname) {
             if (i.get_type() == FileRecordType::FILE) {
                 printf("read file: %s\n", i.get_lname().c_str());
-                buf = read_file_at_cluster(i.get_cluster(), i.get_size());
-                if (buf == nullptr) {
+                res = read_file_at_cluster(i.get_cluster(), i.get_size());
+                if (res.first == nullptr) {
                     printf("error: read file failed\n");
                     return false;
                 }
-                printf("read file success at %p\n", buf);
-                printf("read file success: %s\n", buf);
+                printf("read file success at %p, size %d bytes\n", res.first, res.second);
+                // 写到目标文件夹
+                std::ofstream out;
+                out.open(dst, std::ios::out | std::ios::binary);
+                if (!out.is_open()) {
+                    printf("error: open file %s failed\n", dst.c_str());
+                    return false;
+                }
+                out.write((char *)res.first, res.second);
+                out.close();
                 return true;
             } else if (i.get_type() == FileRecordType::DIRECTORY) {
                 printf("error: %s is a directory\n", fname.c_str());
@@ -58,6 +66,7 @@ bool FAT::copy(std::string src, std::string dst) {
             }
         }
     }
+
     return false;
 }
 void FAT::foo(uint32_t fat_table[], int start_index) {

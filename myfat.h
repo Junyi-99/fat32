@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <cctype>
 #include <cstring>
+#include <fstream>
 #include <fcntl.h>
 #include <iostream>
 #include <list>
@@ -12,6 +13,7 @@
 #include <string>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 enum class FatType { FAT12 = 12, FAT16 = 16, FAT32 = 32, FAT_UNKNOWN = -1 };
@@ -120,11 +122,11 @@ class FAT {
     }
 
     void *get_data_from_cluster(int cluster) {
-        int sector = hdr->BPB_RsvdSecCnt + hdr->BPB_NumFATs * hdr->fat32.BPB_FATSz32 + cluster * hdr->BPB_SecPerClus;
+        int sector = hdr->BPB_RsvdSecCnt + hdr->BPB_NumFATs * hdr->fat32.BPB_FATSz32 + (cluster - 2) * hdr->BPB_SecPerClus;
         return get_data_from_sector(sector, 0);
     }
 
-    uint8_t *read_file_at_cluster(uint32_t cluster, uint32_t file_size) {
+    std::pair<uint8_t *, uint32_t> read_file_at_cluster(uint32_t cluster, uint32_t file_size) {
         printf("read file at cluster %d, size %d bytes\n", cluster, file_size);
         uint32_t read_bytes = 0;
         int32_t remaining_bytes = file_size;
@@ -151,7 +153,7 @@ class FAT {
             ptr = nullptr;
         }
 
-        return ptr;
+        return std::make_pair(ptr, read_bytes);
     }
     DirInfo cd(std::string name, DirInfo di) {
         for (auto file : di.get_files()) {
