@@ -206,7 +206,7 @@ std::pair<bool, FileRecord> FAT::file_exist(std::string path) {
         src_tmp = src_tmp.substr(src_tmp.find("/") + 1);
     }
     src_split.push_back(src_tmp);
-    DirInfo di = list(); // root dir
+    DirInfo di = ls(); // root dir
 
     std::string fname = src_split.back();
     src_split.pop_back();
@@ -315,7 +315,9 @@ void FAT::get_fat_entry(int cluster) {
         }
     }
 }
+
 size_t FAT::get_first_sector_from_cluster(int cluster) { return (cluster - 2) * hdr->BPB_SecPerClus + FirstDataSector; }
+
 std::string FAT::print_long_name(union DirEntry *root_dir) {
     std::string result;
     for (int i = 0; i < 10; i += 2) {
@@ -332,7 +334,8 @@ std::string FAT::print_long_name(union DirEntry *root_dir) {
     }
     return result;
 }
-DirInfo FAT::list(uint32_t cluster) {
+
+DirInfo FAT::ls(uint32_t cluster) {
 
     uint32_t current_cluster = cluster;
     DirInfo di = DirInfo();
@@ -405,7 +408,7 @@ DirInfo FAT::list(uint32_t cluster) {
     return di;
 }
 
-DirInfo FAT::list() {
+DirInfo FAT::ls() {
 
     if (fat_type != FatType::FAT32) {
         throw std::logic_error("only FAT32 is supported for root directory listing");
@@ -414,7 +417,7 @@ DirInfo FAT::list() {
     uint32_t rootDirClusterNum = hdr->fat32.BPB_RootClus;
     int dataSecCnt = (hdr->BPB_TotSec32 - hdr->BPB_RsvdSecCnt - (hdr->BPB_NumFATs * hdr->fat32.BPB_FATSz32));
 
-    return list(rootDirClusterNum);
+    return ls(rootDirClusterNum);
 }
 
 void FAT::check() {
@@ -500,4 +503,131 @@ FatType FAT::check_fat_type() {
     }
 
     return FatType::FAT_UNKNOWN;
+}
+
+DirInfo FAT::cd(const std::string &name, const DirInfo &di) {
+    for (const auto &file : di.get_files()) {
+        if (file.get_lname() == name && file.get_type() == FileRecordType::DIRECTORY) {
+            return ls(file.get_cluster());
+        }
+    }
+    return DirInfo();
+}
+
+std::pair<bool, DirInfo> FAT::get_file_dir(std::string filename) {
+
+    std::vector<std::string> src_split;
+    std::string src_tmp = filename;
+    while (src_tmp.find("/") != std::string::npos) {
+        std::string substr = src_tmp.substr(0, src_tmp.find("/"));
+        if (substr.length() > 0) {
+            src_split.push_back(substr);
+        }
+        src_tmp = src_tmp.substr(src_tmp.find("/") + 1);
+    }
+    src_split.push_back(src_tmp);
+    DirInfo di = ls(); // root dir
+
+    std::string fname = src_split.back();
+    src_split.pop_back();
+    // src_split 剩下的就是 dir path 了
+
+    // 进入目标文件夹
+    while (src_split.size() > 0) {
+        std::string dname = src_split[0];
+        src_split.erase(src_split.begin());
+        if (exist_in_dir(dname, di, FileRecordType::DIRECTORY))
+            di = cd(dname, di);
+        else {
+            printf("error: %s is not a valid directory\n", dname.c_str());
+            return std::make_pair(false, DirInfo());
+        }
+    }
+    return std::make_pair(true, di);
+}
+
+bool FAT::exist_in_dir(std::string name, DirInfo di, FileRecordType type) {
+    for (auto file : di.get_files()) {
+        if (file.get_lname() == name && file.get_type() == type) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::vector<uint32_t> FAT::get_clusters(uint32_t cluster) {
+    std::vector<uint32_t> res;
+    while (cluster < 0x0ffffff8) {
+        res.push_back(cluster);
+        cluster = next_cluster(cluster);
+    }
+    return res;
+}
+
+void *FAT::get_ptr_from_cluster(int cluster) {
+    int sector = hdr->BPB_RsvdSecCnt + hdr->BPB_NumFATs * hdr->fat32.BPB_FATSz32 + (cluster - 2) * hdr->BPB_SecPerClus;
+    return get_ptr_from_sector(sector, 0);
+}
+
+void *FAT::get_ptr_from_sector(int sector, int offset) {
+    assert(hdr->BPB_BytsPerSec == 512 || hdr->BPB_BytsPerSec == 1024 || hdr->BPB_BytsPerSec == 2048 || hdr->BPB_BytsPerSec == 4096);
+    return (uint8_t *)this->hdr + sector * (hdr->BPB_BytsPerSec) + offset * 32;
+}
+
+std::pair<uint8_t *, uint32_t> FAT::read_file_at_cluster(uint32_t cluster, uint32_t file_size) {
+    // printf("read file at cluster %d, size %d bytes\n", cluster, file_size);
+    uint32_t read_bytes = 0;
+    uint32_t remaining_bytes = file_size;
+    uint8_t *ptr = (uint8_t *)malloc(file_size);
+
+    while (remaining_bytes > 0 && cluster < MAX) {
+        if (remaining_bytes < cluster_bytes) {
+            cluster_bytes = remaining_bytes;
+        }
+
+        void *data_src = get_ptr_from_cluster(cluster);
+        memcpy(ptr + read_bytes, data_src, cluster_bytes);
+        read_bytes += cluster_bytes;
+        remaining_bytes -= cluster_bytes;
+        // printf("read cluster %d, %d bytes, remaining %d bytes\n", cluster, cluster_bytes, remaining_bytes);
+        cluster = next_cluster(cluster);
+    }
+    assert(remaining_bytes == 0);
+
+    return std::make_pair(ptr, read_bytes);
+}
+
+bool FAT::write_bytes_to_cluster(uint32_t cluster, uint8_t *data, uint32_t size) {
+
+    // printf("write bytes to cluster %d, size %d bytes\n", cluster, size);
+
+    if (size > cluster_bytes) {
+        throw std::runtime_error("write to cluser size is larger than one cluster size");
+    }
+
+    uint8_t *ptr = (uint8_t *)get_ptr_from_cluster(cluster);
+    memcpy(ptr, data, size);
+    return true;
+}
+unsigned char FAT::calculate_checksum(unsigned char *pFcbName) {
+    short FcbNameLen;
+    unsigned char checksum = 0;
+    for (int i = 0; i < 11; i++) {
+        // Rotate the checksum to the right
+        checksum = ((checksum & 1) ? 0x80 : 0) + (checksum >> 1) + pFcbName[i];
+    }
+    return checksum;
+}
+
+void FAT::fat_cluster_list(uint32_t begin_cluster) {
+    while (begin_cluster < MAX) {
+        printf("%d ", begin_cluster);
+        begin_cluster = next_cluster(begin_cluster);
+    }
+}
+
+void FAT::sync_backup() {
+    uint8_t *ptr = (uint8_t *)this->hdr;
+    if (hdr->BPB_NumFATs == 2)
+        memcpy(ptr + (hdr->BPB_RsvdSecCnt + hdr->fat32.BPB_FATSz32) * hdr->BPB_BytsPerSec, ptr + hdr->BPB_RsvdSecCnt * hdr->BPB_BytsPerSec, hdr->BPB_BytsPerSec * hdr->fat32.BPB_FATSz32);
 }

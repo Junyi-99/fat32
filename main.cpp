@@ -52,7 +52,7 @@ void ls(FAT &fat, uint32_t cluster, std::string prefix) {
     if (cluster >= fat.MAX)
         return;
 
-    DirInfo info = (cluster == 0) ? fat.list() : fat.list(cluster);
+    DirInfo info = (cluster == 0) ? fat.ls() : fat.ls(cluster);
 
     for (const auto &file : info.get_files()) {
         std::string fileName = file.get_lname();
