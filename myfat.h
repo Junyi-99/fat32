@@ -66,16 +66,16 @@ class FileRecord {
 
     uint32_t cluster; // start cluster
     uint32_t size;    // file size
-    
+
     enum FileRecordType type;
-    
+
     std::vector<union DirEntry *> long_name_records;
 
   public:
     FileRecord() {}
     void append_direntry(union DirEntry *entry) { this->long_name_records.push_back(entry); }
     void append_name(std::string name) { this->lname = name + this->lname; }
-    
+
     void set_cluster(uint32_t cluster) { this->cluster = cluster; }
     void set_name(std::string name) {
         this->name = name;
@@ -95,16 +95,16 @@ class FileRecord {
             }
         }
     }
-    
+
     void set_size(uint32_t size) { this->size = size; }
     void set_type(enum FileRecordType type) { this->type = type; }
-    
+
     std::string get_name() const { return name; }
     std::string get_lname() const { return lname; }
-    
+
     uint32_t get_size() const { return size; }
     uint32_t get_cluster() const { return cluster; }
-    
+
     enum FileRecordType get_type() const { return type; }
     std::vector<union DirEntry *> get_long_name_records() { return long_name_records; }
 };
@@ -116,7 +116,7 @@ class DirInfo {
   public:
     DirInfo() { files = std::vector<FileRecord>(); };
 
-    std::vector<FileRecord> get_files() { return files; }
+    std::vector<FileRecord> get_files() const { return files; }
     std::vector<uint32_t> get_clusters() { return clusters; }
 
     void add_file(FileRecord file) { files.push_back(file); }
@@ -217,26 +217,25 @@ class FAT {
         }
         return std::make_pair(true, di);
     }
-    DirInfo cd(std::string name, DirInfo di) {
-        for (auto file : di.get_files()) {
-            if (file.get_lname() == name) {
-                if (file.get_type() == FileRecordType::DIRECTORY) {
-                    return list(file.get_cluster());
-                }
+    DirInfo cd(const std::string &name, const DirInfo &di) {
+        for (const auto &file : di.get_files()) {
+            if (file.get_lname() == name && file.get_type() == FileRecordType::DIRECTORY) {
+                return list(file.get_cluster());
             }
         }
         return DirInfo();
     }
-    unsigned char ChkSum(unsigned char *pFcbName) {
+
+    unsigned char calculate_checksum(unsigned char *pFcbName) {
         short FcbNameLen;
-        unsigned char Sum;
-        Sum = 0;
-        for (FcbNameLen = 11; FcbNameLen != 0; FcbNameLen--) {
-            // NOTE: The operation is an unsigned char rotate right
-            Sum = ((Sum & 1) ? 0x80 : 0) + (Sum >> 1) + *pFcbName++;
+        unsigned char checksum = 0;
+        for (int i = 0; i < 11; i++) {
+            // Rotate the checksum to the right
+            checksum = ((checksum & 1) ? 0x80 : 0) + (checksum >> 1) + pFcbName[i];
         }
-        return Sum;
+        return checksum;
     }
+
     std::vector<uint32_t> get_clusters(uint32_t cluster) {
         std::vector<uint32_t> res;
         while (cluster < 0x0ffffff8) {

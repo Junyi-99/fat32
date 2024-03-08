@@ -405,7 +405,6 @@ DirInfo FAT::list(uint32_t cluster) {
     return di;
 }
 
-
 DirInfo FAT::list() {
 
     if (fat_type != FatType::FAT32) {
