@@ -63,16 +63,20 @@ class FileRecord {
 
     std::string lname;
     std::string name;
+
     uint32_t cluster; // start cluster
     uint32_t size;    // file size
+    
     enum FileRecordType type;
+    
     std::vector<union DirEntry *> long_name_records;
 
   public:
     FileRecord() {}
     void append_direntry(union DirEntry *entry) { this->long_name_records.push_back(entry); }
-    void set_cluster(uint32_t cluster) { this->cluster = cluster; }
     void append_name(std::string name) { this->lname = name + this->lname; }
+    
+    void set_cluster(uint32_t cluster) { this->cluster = cluster; }
     void set_name(std::string name) {
         this->name = name;
         // 有时候文件名太短，没有 lname，我们给它加一个 lname
@@ -91,25 +95,32 @@ class FileRecord {
             }
         }
     }
-    std::vector<union DirEntry *> get_long_name_records() { return long_name_records; }
+    
     void set_size(uint32_t size) { this->size = size; }
     void set_type(enum FileRecordType type) { this->type = type; }
+    
     std::string get_name() { return name; }
     std::string get_lname() { return lname; }
+    
     uint32_t get_size() { return size; }
     uint32_t get_cluster() { return cluster; }
+    
     enum FileRecordType get_type() { return type; }
+    std::vector<union DirEntry *> get_long_name_records() { return long_name_records; }
 };
 
 class DirInfo {
     std::vector<FileRecord> files;
     std::vector<uint32_t> clusters; // 目录占了哪些 cluster
+
   public:
     DirInfo() { files = std::vector<FileRecord>(); };
+
     std::vector<FileRecord> get_files() { return files; }
+    std::vector<uint32_t> get_clusters() { return clusters; }
+
     void add_file(FileRecord file) { files.push_back(file); }
     void add_cluster(uint32_t cluster) { clusters.push_back(cluster); }
-    std::vector<uint32_t> get_clusters() { return clusters; }
 };
 
 class FAT {
@@ -142,7 +153,7 @@ class FAT {
     }
 
     std::pair<uint8_t *, uint32_t> read_file_at_cluster(uint32_t cluster, uint32_t file_size) {
-        //printf("read file at cluster %d, size %d bytes\n", cluster, file_size);
+        // printf("read file at cluster %d, size %d bytes\n", cluster, file_size);
         uint32_t read_bytes = 0;
         uint32_t remaining_bytes = file_size;
         uint8_t *ptr = (uint8_t *)malloc(file_size);
@@ -156,7 +167,7 @@ class FAT {
             memcpy(ptr + read_bytes, data_src, cluster_bytes);
             read_bytes += cluster_bytes;
             remaining_bytes -= cluster_bytes;
-            //printf("read cluster %d, %d bytes, remaining %d bytes\n", cluster, cluster_bytes, remaining_bytes);
+            // printf("read cluster %d, %d bytes, remaining %d bytes\n", cluster, cluster_bytes, remaining_bytes);
             cluster = next_cluster(cluster);
         }
         assert(remaining_bytes == 0);
@@ -165,7 +176,7 @@ class FAT {
     }
     bool write_bytes_to_cluster(uint32_t cluster, uint8_t *data, uint32_t size) {
 
-        //printf("write bytes to cluster %d, size %d bytes\n", cluster, size);
+        // printf("write bytes to cluster %d, size %d bytes\n", cluster, size);
 
         if (size > cluster_bytes) {
             throw std::runtime_error("write to cluser size is larger than one cluster size");
@@ -248,7 +259,6 @@ class FAT {
 
     //     return (DirEntry *)get_ptr_from_sector(sectors, entry_offset);
     // }
-
 
     void fat_cluster_list(uint32_t begin_cluster) {
         while (begin_cluster < MAX) {

@@ -1,36 +1,49 @@
-#include "myfat.h"
 #include <assert.h>
-#include <linux/limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <string>
-
 #include <wchar.h>
 
+#ifdef __linux__
+#include <linux/limits.h>
+#elif __APPLE__
+#include <limits.h>
+#endif
+
 #include "fat.h"
+#include "myfat.h"
 
 void print_help(char *argv[]) {
-    fprintf(stderr, "Usage: %s disk.img ck\n", argv[0]);
-    fprintf(stderr, "       %s disk.img ls\n", argv[0]);
-    fprintf(stderr,
-            "       %s disk.img cp image:/path/to/source "
-            "local:/path/to/destination\n",
-            argv[0]);
-    fprintf(stderr, "       %s disk.img cp /path/to/be/remove\n", argv[0]);
-    fprintf(stderr,
-            "       %s disk.img cp local:/path/to/source "
-            "image:/path/to/destination\n",
-            argv[0]);
+    fprintf(stderr, 
+        "Usage:\n"
+        "  %s disk.img ck\n"
+        "  %s disk.img ls\n"
+        "  %s disk.img cp image:/path/to/source local:/path/to/destination\n"
+        "  %s disk.img cp /path/to/be/remove\n"
+        "  %s disk.img cp local:/path/to/source image:/path/to/destination\n",
+        argv[0], argv[0], argv[0], argv[0], argv[0]
+    );
 }
 
 void print_dir(DirInfo di) {
-    for (auto &i : di.get_files()) {
-        if (i.get_type() == FileRecordType::FILE) {
-            printf("%u %s\n", i.get_cluster(), i.get_lname().c_str());
-        } else if (i.get_type() == FileRecordType::DIRECTORY) {
-            printf("%u ./%s\n", i.get_cluster(), i.get_lname().c_str());
+    for (auto &file : di.get_files()) {
+        auto file_type = file.get_type();
+        auto file_name = file.get_lname();
+        auto cluster_number = file.get_cluster();
+        
+        switch (file_type)
+        {
+        case FileRecordType::FILE:
+            printf("%u %s\n", cluster_number, file_name.c_str());
+            break;
+        case FileRecordType::DIRECTORY:
+            printf("%u ./%s\n", cluster_number, file_name.c_str());
+            break;
+        default:
+            printf("%u UNKNOWN [%s]\n", cluster_number, file_name.c_str());
+            break;
         }
     }
 }
