@@ -99,13 +99,13 @@ class FileRecord {
     void set_size(uint32_t size) { this->size = size; }
     void set_type(enum FileRecordType type) { this->type = type; }
     
-    std::string get_name() { return name; }
-    std::string get_lname() { return lname; }
+    std::string get_name() const { return name; }
+    std::string get_lname() const { return lname; }
     
-    uint32_t get_size() { return size; }
-    uint32_t get_cluster() { return cluster; }
+    uint32_t get_size() const { return size; }
+    uint32_t get_cluster() const { return cluster; }
     
-    enum FileRecordType get_type() { return type; }
+    enum FileRecordType get_type() const { return type; }
     std::vector<union DirEntry *> get_long_name_records() { return long_name_records; }
 };
 

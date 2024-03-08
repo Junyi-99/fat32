@@ -404,10 +404,12 @@ DirInfo FAT::list(uint32_t cluster) {
     }
     return di;
 }
+
+
 DirInfo FAT::list() {
 
     if (fat_type != FatType::FAT32) {
-        throw std::logic_error("not implemented");
+        throw std::logic_error("only FAT32 is supported for root directory listing");
     }
 
     uint32_t rootDirClusterNum = hdr->fat32.BPB_RootClus;
@@ -432,7 +434,7 @@ void FAT::check() {
 }
 FAT::~FAT() { munmap(hdr, size); }
 FAT::FAT(std::string diskimg) {
-    diskimg = diskimg;
+    this->diskimg = diskimg;
     int fd = open(diskimg.c_str(), O_RDWR);
     if (fd < 0) {
         perror("open");
