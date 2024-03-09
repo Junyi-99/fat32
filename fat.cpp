@@ -1,13 +1,4 @@
-#include "myfat.h"
-void hexdump(uint32_t *buf, int len) {
-    for (int i = 0; i < len; i++) {
-        printf("%08x ", buf[i]);
-
-        if (i % 16 == 0) {
-            printf("\n");
-        }
-    }
-}
+#include "fat.h"
 
 bool FAT::remove(std::string filename) {
     auto r = file_exist(filename);
@@ -33,6 +24,25 @@ bool FAT::remove(std::string filename) {
     sync_backup();
     // throw std::runtime_error("not implemented");
     return true;
+}
+
+void FileRecord::set_name(std::string name) {
+    this->name = name;
+    // 有时候文件名太短，没有 lname，我们给它加一个 lname
+    if (lname.empty()) {
+        size_t pos = name.find_first_of(" ");
+        std::string fname = name.substr(0, pos);
+        std::string extension = name.substr(pos + 1);
+        trim(fname);
+        trim(extension);
+        std::transform(fname.begin(), fname.end(), fname.begin(), [](unsigned char c) { return std::tolower(c); });
+        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return std::tolower(c); });
+        if (extension.empty()) {
+            this->lname = fname;
+        } else {
+            this->lname = fname + "." + extension;
+        }
+    }
 }
 
 bool FAT::copy_to_image(std::string src, std::string dst) {

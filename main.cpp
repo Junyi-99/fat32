@@ -15,7 +15,6 @@
 #endif
 
 #include "fat.h"
-#include "myfat.h"
 
 void print_help(char *argv[]) {
     fprintf(stderr,
