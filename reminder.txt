@@ -1,0 +1,7 @@
+logical sector
+cluster size
+reserved region
+fat region
+root directory region
+data region
+file allocation table
