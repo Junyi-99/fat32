@@ -30,7 +30,7 @@ void print_help(char *argv[]) {
 void print_dir(DirInfo di) {
     for (auto &file : di.get_files()) {
         auto file_type = file.get_type();
-        auto file_name = file.get_lname();
+        auto file_name = file.get_long_name();
         auto cluster_number = file.get_cluster();
 
         switch (file_type) {
@@ -54,7 +54,7 @@ void ls(FAT &fat, uint32_t cluster, std::string prefix) {
     DirInfo info = (cluster == 0) ? fat.ls() : fat.ls(cluster);
 
     for (const auto &file : info.get_files()) {
-        std::string fileName = file.get_lname();
+        std::string fileName = file.get_long_name();
 
         // Skip the current directory and the parent directory
         if (fileName == "." || fileName == "..") {

@@ -234,7 +234,7 @@ std::pair<bool, FileRecord> FAT::file_exist(std::string path) {
     }
 
     for (auto i : di.get_files()) {
-        if (i.get_lname() == fname && i.get_type() == FileRecordType::FILE) {
+        if (i.get_long_name() == fname && i.get_type() == FileRecordType::FILE) {
             return std::make_pair(true, i);
         }
     }
@@ -252,7 +252,7 @@ bool FAT::copy_to_local(std::string src, std::string dst) {
     }
 
     // 读文件到内存
-    printf("read file: %s\n", fr.get_lname().c_str());
+    printf("read file: %s\n", fr.get_long_name().c_str());
     auto res = read_file_at_cluster(fr.get_cluster(), fr.get_size());
     if (res.first == nullptr) {
         printf("error: read file failed\n");
@@ -517,7 +517,7 @@ FatType FAT::check_fat_type() {
 
 DirInfo FAT::cd(const std::string &name, const DirInfo &di) {
     for (const auto &file : di.get_files()) {
-        if (file.get_lname() == name && file.get_type() == FileRecordType::DIRECTORY) {
+        if (file.get_long_name() == name && file.get_type() == FileRecordType::DIRECTORY) {
             return ls(file.get_cluster());
         }
     }
@@ -558,7 +558,7 @@ std::pair<bool, DirInfo> FAT::get_file_dir(std::string filename) {
 
 bool FAT::exist_in_dir(std::string name, DirInfo di, FileRecordType type) {
     for (auto file : di.get_files()) {
-        if (file.get_lname() == name && file.get_type() == type) {
+        if (file.get_long_name() == name && file.get_type() == type) {
             return true;
         }
     }

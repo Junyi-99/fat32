@@ -134,36 +134,33 @@ enum class FatType { FAT12 = 12, FAT16 = 16, FAT32 = 32, FAT_UNKNOWN = -1 };
 enum class FileRecordType { FILE, DIRECTORY };
 
 class FileRecord {
-
+private:
     std::string lname;
     std::string name;
 
     uint32_t cluster; // start cluster
     uint32_t size;    // file size
 
-    enum FileRecordType type;
-
+    FileRecordType type;
     std::vector<union DirEntry *> long_name_records;
 
   public:
     FileRecord() {}
+
+    void set_name(std::string name);
+    void set_size(uint32_t size) { this->size = size; }
+    void set_type(FileRecordType type) { this->type = type; }
+    void set_cluster(uint32_t cluster) { this->cluster = cluster; }
+
+    auto get_name() const { return name; }
+    auto get_long_name() const { return lname; }
+    auto get_size() const { return size; }
+    auto get_type() const { return type; }
+    auto get_cluster() const { return cluster; }
+    auto get_long_name_records() { return long_name_records; }
+
     void append_direntry(union DirEntry *entry) { this->long_name_records.push_back(entry); }
     void append_name(std::string name) { this->lname = name + this->lname; }
-
-    void set_cluster(uint32_t cluster) { this->cluster = cluster; }
-    void set_name(std::string name);
-
-    void set_size(uint32_t size) { this->size = size; }
-    void set_type(enum FileRecordType type) { this->type = type; }
-
-    std::string get_name() const { return name; }
-    std::string get_lname() const { return lname; }
-
-    uint32_t get_size() const { return size; }
-    uint32_t get_cluster() const { return cluster; }
-
-    enum FileRecordType get_type() const { return type; }
-    std::vector<union DirEntry *> get_long_name_records() { return long_name_records; }
 };
 
 class DirInfo {
@@ -173,8 +170,8 @@ class DirInfo {
   public:
     DirInfo() { files = std::vector<FileRecord>(); };
 
-    std::vector<FileRecord> get_files() const { return files; }
-    std::vector<uint32_t> get_clusters() { return clusters; }
+    auto get_files() const { return files; }
+    auto get_clusters() { return clusters; }
 
     void add_file(FileRecord file) { files.push_back(file); }
     void add_cluster(uint32_t cluster) { clusters.push_back(cluster); }
